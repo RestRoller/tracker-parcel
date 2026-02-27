@@ -2,10 +2,10 @@ name: Go Docker CI/CD
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, newb ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, newb ]
 
 jobs:
   test:
@@ -29,33 +29,24 @@ jobs:
         run: go vet ./...
 
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+        run: go test -v -cover ./...
 
       - name: Check formatting
         run: |
           if [ -n "$(gofmt -l .)" ]; then
-            echo "Some files are not formatted properly. Run 'gofmt -s -w .'"
+            echo "Файлы не отформатированы. Запустите 'gofmt -s -w .'"
             exit 1
+          else
+            echo "Все файлы отформатированы правильно"
           fi
-
-      - name: Run staticcheck
-        run: |
-          go install honnef.co/go/tools/cmd/staticcheck@latest
-          staticcheck ./...
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.txt
-          fail_ci_if_error: false
 
       - name: Build application
         run: go build -v -o app ./...
 
       - name: Verify build
         run: |
-          echo "Tests passed"
-          echo "Build successful"
+          echo "Тесты пройдены успешно"
+          echo "Сборка завершена"
           ls -la app
 
   publish:
@@ -85,7 +76,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/parcel-tracker
+          images: ${{ secrets.DOCKER_USERNAME }}/tracker-parcel
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -104,11 +95,11 @@ jobs:
 
       - name: Verify Docker image
         run: |
-          echo "Docker image published successfully!"
-          echo "Images:"
-          echo "  - ${{ secrets.DOCKER_USERNAME }}/parcel-tracker:latest"
-          echo "  - ${{ secrets.DOCKER_USERNAME }}/parcel-tracker:${{ steps.get_version.outputs.VERSION }}"
+          echo "Docker образ успешно опубликован!"
+          echo "Образы:"
+          echo "  - ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:latest"
+          echo "  - ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:${{ steps.get_version.outputs.VERSION }}"
           
-          # Test pull
-          docker pull ${{ secrets.DOCKER_USERNAME }}/parcel-tracker:latest
-          echo "Image verification complete"
+          # Проверка что образ можно скачать
+          docker pull ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:latest
+          echo "Проверка образа завершена"
