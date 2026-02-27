@@ -1,14 +1,9 @@
-# Multi-stage build для Go приложения
-
-# Stage 1: Build
+# Этап 1: Сборка приложения
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-# Устанавливаем зависимости для сборки
-RUN apk add --no-cache git gcc musl-dev
-
-# Копируем go mod и sum
+# Копируем файлы модуля
 COPY go.mod go.sum ./
 RUN go mod download
 
@@ -16,26 +11,27 @@ RUN go mod download
 COPY . .
 
 # Собираем приложение
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o tracker-app .
 
-# Stage 2: Run
+# Этап 2: Финальный образ
 FROM alpine:latest
 
+# Устанавливаем сертификаты для HTTPS
 RUN apk --no-cache add ca-certificates tzdata
 
-WORKDIR /root/
+WORKDIR /app
 
-# Копируем бинарник из builder
-COPY --from=builder /app/main .
+# Копируем бинарный файл из этапа сборки
+COPY --from=builder /app/tracker-app .
 
-# Копируем базу данных (если нужно)
+# Копируем базу данных (если нужна для инициализации)
 COPY --from=builder /app/tracker.db ./
 
-# Создаем volume для данных
-VOLUME ["/root/data"]
+# Создаем volume для персистентных данных
+VOLUME ["/app/data"]
 
 # Открываем порт
 EXPOSE 8080
 
 # Запускаем приложение
-CMD ["./main"]
+CMD ["./tracker-app"]
