@@ -20,20 +20,36 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: '1.21'
-        # Убираем cache: true чтобы избежать ошибки
+        # cache убран для избежания ошибки tar
     
-    - name: Install dependencies
+    - name: Install dependencies (if any)
       run: |
-        go mod download || echo "No dependencies to download"
+        if [ -f go.mod ]; then
+          go mod download
+        else
+          echo "No go.mod file found, skipping dependencies"
+        fi
     
     - name: Run tests
-      run: go test -v ./...
+      run: |
+        if [ -f go.mod ]; then
+          go test -v ./...
+        else
+          echo "No tests to run"
+        fi
     
     - name: Build application
-      run: go build -v -o app ./...
+      run: go build -v -o app .
     
-    - name: Test result
-      run: echo "✅ Тесты пройдены успешно"
+    - name: Verify build
+      run: |
+        if [ -f app ]; then
+          echo "✅ Build successful: app created"
+          ls -la app
+        else
+          echo "❌ Build failed: app not created"
+          exit 1
+        fi
 
   publish:
     name: 🚢 PUBLISH TO DOCKER HUB
@@ -48,8 +64,10 @@ jobs:
     - name: Display tag information
       run: |
         echo "========================================="
-        echo "🚀 ЗАПУСК PUBLISH JOB ДЛЯ ТЕГА: ${{ github.ref_name }}"
+        echo "🚀 PUBLISHING TAG: ${{ github.ref_name }}"
         echo "========================================="
+        echo "📦 Repository: ${{ github.repository }}"
+        echo "📌 Commit: ${{ github.sha }}"
     
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
@@ -62,7 +80,7 @@ jobs:
     
     - name: Verify Docker Hub login
       run: |
-        echo "✅ Успешный вход в Docker Hub как: ${{ secrets.DOCKER_USERNAME }}"
+        echo "✅ Successfully logged in as: ${{ secrets.DOCKER_USERNAME }}"
     
     - name: Build and push Docker image
       uses: docker/build-push-action@v4
@@ -72,25 +90,29 @@ jobs:
         tags: |
           ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:latest
           ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:${{ github.ref_name }}
-        # Убираем cache-from и cache-to для простоты
+        # Кэширование отключено для простоты
+        no-cache: true
     
-    - name: Verify push success
+    - name: Verify push
       run: |
         echo "========================================="
-        echo "✅✅✅ ПУБЛИКАЦИЯ УСПЕШНА ✅✅✅"
+        echo "✅✅✅ PUBLISH SUCCESSFUL ✅✅✅"
         echo "========================================="
-        echo "📦 Образы опубликованы:"
+        echo "📦 Images published:"
         echo "  - ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:latest"
         echo "  - ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:${{ github.ref_name }}"
+        echo "========================================="
+        echo "🔗 Docker Hub URL:"
+        echo "  https://hub.docker.com/r/${{ secrets.DOCKER_USERNAME }}/tracker-parcel/tags"
     
     - name: Test pull image
       run: |
-        echo "🔄 Тестирование скачивания образа..."
+        echo "🔄 Testing image pull..."
         docker pull ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:${{ github.ref_name }}
         if [ $? -eq 0 ]; then
-          echo "✅ Образ успешно скачивается с Docker Hub"
+          echo "✅ Image successfully pulled from Docker Hub"
           docker images | grep tracker-parcel
         else
-          echo "❌ Ошибка скачивания образа"
+          echo "❌ Failed to pull image"
           exit 1
         fi
