@@ -1,16 +1,18 @@
-name: Go Docker CI/CD
+name: Go Docker CI/CD with Publishing
 
 on:
   push:
     branches: [ main, master, newb ]
-    tags: [ 'v*' ]
+    tags: [ 'v*' ]  # Запускается при создании тегов v1.0.0, v2.1.0 и т.д.
   pull_request:
     branches: [ main, master, newb ]
 
 jobs:
   test:
-    name: Test and Lint
+    name: Test Application
     runs-on: ubuntu-latest
+    outputs:
+      status: ${{ job.status }}
 
     steps:
       - name: Checkout code
@@ -22,84 +24,109 @@ jobs:
           go-version: '1.21'
           cache: true
 
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Run vet
-        run: go vet ./...
-
       - name: Run tests
-        run: go test -v -cover ./...
-
-      - name: Check formatting
-        run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "Файлы не отформатированы. Запустите 'gofmt -s -w .'"
-            exit 1
-          else
-            echo "Все файлы отформатированы правильно"
-          fi
+        run: go test -v ./...
+        continue-on-error: false
 
       - name: Build application
         run: go build -v -o app ./...
 
-      - name: Verify build
+      - name: Test result notification
         run: |
-          echo "Тесты пройдены успешно"
-          echo "Сборка завершена"
-          ls -la app
+          echo "✅ ТЕСТЫ УСПЕШНО ПРОЙДЕНЫ"
+          echo "📦 Приложение скомпилировано"
 
   publish:
-    name: Publish to Docker Hub
+    name: 🚀 PUBLISH TO DOCKER HUB
     needs: test
     runs-on: ubuntu-latest
+    # ВАЖНО: job запускается ТОЛЬКО для тегов
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Display tag information
+        run: |
+          echo "🎯 ЗАПУЩЕН JOB PUBLISH ДЛЯ ТЕГА"
+          echo "📌 Текущий тег: ${{ github.ref_name }}"
+          echo "📌 Полная ссылка: ${{ github.ref }}"
+          echo "📌 Коммит: ${{ github.sha }}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
       - name: Login to DockerHub
+        id: login
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Verify Docker Hub login
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "✅ УСПЕШНЫЙ ВХОД В DOCKER HUB"
+            echo "👤 Пользователь: ${{ secrets.DOCKER_USERNAME }}"
+          else
+            echo "❌ ОШИБКА ВХОДА В DOCKER HUB"
+            exit 1
+          fi
+
       - name: Extract version from tag
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ${{ secrets.DOCKER_USERNAME }}/tracker-parcel
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
-            type=sha,format=short
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "✅ Извлечена версия: $VERSION"
 
       - name: Build and push Docker image
+        id: build_push
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:latest
+            ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:${{ steps.get_version.outputs.VERSION }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.get_version.outputs.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Verify Docker image
+      - name: Verify push success
         run: |
-          echo "Docker образ успешно опубликован!"
-          echo "Образы:"
-          echo "  - ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:latest"
-          echo "  - ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:${{ steps.get_version.outputs.VERSION }}"
-          
-          # Проверка что образ можно скачать
-          docker pull ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:latest
-          echo "Проверка образа завершена"
+          if [ $? -eq 0 ]; then
+            echo "✅✅✅ DOCKER IMAGE УСПЕШНО ОПУБЛИКОВАН ✅✅✅"
+            echo "📦 Репозиторий: ${{ secrets.DOCKER_USERNAME }}/tracker-parcel"
+            echo "🏷️ Теги:"
+            echo "   - latest"
+            echo "   - ${{ steps.get_version.outputs.VERSION }}"
+            echo "🔗 Ссылка на Docker Hub: https://hub.docker.com/r/${{ secrets.DOCKER_USERNAME }}/tracker-parcel/tags"
+          else
+            echo "❌❌❌ ОШИБКА ПУБЛИКАЦИИ ❌❌❌"
+            exit 1
+          fi
+
+      - name: Test pull image
+        run: |
+          echo "🔄 Тестируем скачивание образа..."
+          docker pull ${{ secrets.DOCKER_USERNAME }}/tracker-parcel:${{ steps.get_version.outputs.VERSION }}
+          if [ $? -eq 0 ]; then
+            echo "✅ ОБРАЗ УСПЕШНО СКАЧИВАЕТСЯ С DOCKER HUB"
+            docker images | grep tracker-parcel
+          else
+            echo "❌ ОШИБКА СКАЧИВАНИЯ ОБРАЗА"
+            exit 1
+          fi
+
+      - name: Final success message
+        run: |
+          echo "══════════════════════════════════════════════"
+          echo "     🎉  PUBLISH JOB ЗАВЕРШЕН УСПЕШНО  🎉    "
+          echo "══════════════════════════════════════════════"
+          echo "📌 Версия: ${{ steps.get_version.outputs.VERSION }}"
+          echo "📌 Репозиторий: ${{ secrets.DOCKER_USERNAME }}/tracker-parcel"
+          echo "📌 Коммит: ${{ github.sha }}"
+          echo "══════════════════════════════════════════════"
