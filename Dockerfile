@@ -1,16 +1,13 @@
-# Простой Dockerfile без лишних шагов
-FROM golang:1.21-alpine
+FROM golang:1.24.3-alpine 
 
 WORKDIR /app
 
-# Копируем все файлы проекта
+# Копируем все файлы (ваши оригиналы)
 COPY . .
 
 # Собираем приложение
-RUN go build -o tracker-app .
+RUN go build -o app .
 
-# Открываем порт
 EXPOSE 8080
 
-# Запускаем приложение
-CMD ["./tracker-app"]
+CMD ["./app"]
