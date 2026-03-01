@@ -1,4 +1,4 @@
-# Этап 1: Сборка приложения
+# Этап сборки
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
@@ -11,27 +11,21 @@ RUN go mod download
 COPY . .
 
 # Собираем приложение
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o tracker-app .
+RUN CGO_ENABLED=0 GOOS=linux go build -o tracker-app .
 
-# Этап 2: Финальный образ
+# Финальный образ
 FROM alpine:latest
 
-# Устанавливаем сертификаты для HTTPS
 RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /app
 
-# Копируем бинарный файл из этапа сборки
+# Копируем бинарник
 COPY --from=builder /app/tracker-app .
 
-# Копируем базу данных (если нужна для инициализации)
+# Копируем базу данных (если нужна)
 COPY --from=builder /app/tracker.db ./
 
-# Создаем volume для персистентных данных
-VOLUME ["/app/data"]
-
-# Открываем порт
 EXPOSE 8080
 
-# Запускаем приложение
 CMD ["./tracker-app"]
