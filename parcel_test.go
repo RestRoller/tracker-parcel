@@ -1,72 +1,90 @@
 package main
 
 import (
-    "errors"
-    "sync"
+    "testing"
 )
 
-type Parcel struct {
-    ID     string
-    Weight float64
-    Status string
-}
-
-var (
-    parcels = make(map[string]*Parcel)
-    mutex   = &sync.RWMutex{}
-)
-
-func NewParcel(id string, weight float64) *Parcel {
-    return &Parcel{
-        ID:     id,
-        Weight: weight,
-        Status: "created",
+func TestNewParcel(t *testing.T) {
+    parcel := NewParcel("test-1", 10.5)
+    
+    if parcel.ID != "test-1" {
+        t.Errorf("Expected ID 'test-1', got '%s'", parcel.ID)
+    }
+    
+    if parcel.Weight != 10.5 {
+        t.Errorf("Expected weight 10.5, got %f", parcel.Weight)
+    }
+    
+    if parcel.Status != "created" {
+        t.Errorf("Expected status 'created', got '%s'", parcel.Status)
     }
 }
 
-func SaveParcel(parcel *Parcel) error {
-    mutex.Lock()
-    defer mutex.Unlock()
+func TestSaveAndGetParcel(t *testing.T) {
+    parcel := NewParcel("test-2", 15.0)
     
-    if parcel.ID == "" {
-        return errors.New("parcel ID cannot be empty")
+    // Save parcel
+    err := SaveParcel(parcel)
+    if err != nil {
+        t.Fatalf("Failed to save parcel: %v", err)
     }
     
-    parcels[parcel.ID] = parcel
-    return nil
+    // Get parcel
+    loaded, err := GetParcel("test-2")
+    if err != nil {
+        t.Fatalf("Failed to get parcel: %v", err)
+    }
+    
+    if loaded.Weight != 15.0 {
+        t.Errorf("Expected weight 15.0, got %f", loaded.Weight)
+    }
 }
 
-func GetParcel(id string) (*Parcel, error) {
-    mutex.RLock()
-    defer mutex.RUnlock()
+func TestUpdateParcel(t *testing.T) {
+    parcel := NewParcel("test-3", 20.0)
     
-    parcel, exists := parcels[id]
-    if !exists {
-        return nil, errors.New("parcel not found")
+    err := SaveParcel(parcel)
+    if err != nil {
+        t.Fatalf("Failed to save parcel: %v", err)
     }
-    return parcel, nil
+    
+    parcel.Weight = 25.0
+    parcel.Status = "updated"
+    
+    err = UpdateParcel(parcel)
+    if err != nil {
+        t.Fatalf("Failed to update parcel: %v", err)
+    }
+    
+    loaded, err := GetParcel("test-3")
+    if err != nil {
+        t.Fatalf("Failed to get parcel: %v", err)
+    }
+    
+    if loaded.Weight != 25.0 {
+        t.Errorf("Expected weight 25.0, got %f", loaded.Weight)
+    }
+    
+    if loaded.Status != "updated" {
+        t.Errorf("Expected status 'updated', got '%s'", loaded.Status)
+    }
 }
 
-func UpdateParcel(parcel *Parcel) error {
-    mutex.Lock()
-    defer mutex.Unlock()
+func TestDeleteParcel(t *testing.T) {
+    parcel := NewParcel("test-4", 30.0)
     
-    if _, exists := parcels[parcel.ID]; !exists {
-        return errors.New("parcel not found")
+    err := SaveParcel(parcel)
+    if err != nil {
+        t.Fatalf("Failed to save parcel: %v", err)
     }
     
-    parcels[parcel.ID] = parcel
-    return nil
-}
-
-func DeleteParcel(id string) error {
-    mutex.Lock()
-    defer mutex.Unlock()
-    
-    if _, exists := parcels[id]; !exists {
-        return errors.New("parcel not found")
+    err = DeleteParcel("test-4")
+    if err != nil {
+        t.Fatalf("Failed to delete parcel: %v", err)
     }
     
-    delete(parcels, id)
-    return nil
+    _, err = GetParcel("test-4")
+    if err == nil {
+        t.Error("Expected error when getting deleted parcel")
+    }
 }
